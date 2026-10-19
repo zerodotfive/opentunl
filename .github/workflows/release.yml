@@ -15,62 +15,105 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build binaries
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: binary
-          platforms: linux/amd64,linux/arm64
-          build-args: GITHUB_REF_NAME=${{ github.ref_name }}
-          outputs: type=local,dest=out
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Prepare release assets
-        run: |
-          mkdir -p dist
-          for arch in amd64 arm64; do
-            cp "out/linux_${arch}/opentunl-server" "dist/opentunl-linux-${arch}"
-          done
-          cd dist && sha256sum opentunl-linux-* > SHA256SUMS
-
-      - name: Image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest
-
-      - name: Build and push image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: GITHUB_REF_NAME=${{ github.ref_name }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GITHUB_REF_NAME=${{ github.ref_name }}
+          tags: |
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+            ${{ env.IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract binaries from Dockerfile
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: binary
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GITHUB_REF_NAME=${{ github.ref_name }}
+          outputs: type=local,dest=out
+          cache-from: type=gha
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+
+          cp out/linux_amd64/opentunl-server dist/opentunl-linux-amd64
+          cp out/linux_arm64/opentunl-server dist/opentunl-linux-arm64
+
+          chmod +x dist/opentunl-linux-amd64 dist/opentunl-linux-arm64
+
+          cd dist
+          sha256sum opentunl-linux-* > SHA256SUMS
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<EOF
+          ## Docker
+
+          Pull the image:
+
+          \`\`\`bash
+          docker pull ${IMAGE}:${GITHUB_REF_NAME}
+          \`\`\`
+
+          Alternatively, pull the latest release:
+
+          \`\`\`bash
+          docker pull ${IMAGE}:latest
+          \`\`\`
+
+          Run the container:
+
+          \`\`\`bash
+          docker run --rm ${IMAGE}:${GITHUB_REF_NAME}
+          \`\`\`
+
+          Docker images are published for \`linux/amd64\` and \`linux/arm64\`.
+
+          ## Standalone binaries
+
+          - \`opentunl-linux-amd64\` — Linux x86-64
+          - \`opentunl-linux-arm64\` — Linux ARM64
+
+          Verify the downloaded files using \`SHA256SUMS\`.
+          EOF
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/*
+          files: |
+            dist/opentunl-linux-amd64
+            dist/opentunl-linux-arm64
+            dist/SHA256SUMS
+          body_path: release-notes.md
           generate_release_notes: true
