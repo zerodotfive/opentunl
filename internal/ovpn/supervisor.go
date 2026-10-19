@@ -38,7 +38,7 @@ func NewSupervisor(configDir string, configPrefix string, postgres *pgxpool.Pool
 }
 
 func (s *Supervisor) getConfigPath(serverID uuid.UUID) string {
-	return s.configPrefix + "-" + serverID.String() + ".conf"
+	return path.Join(s.configDir, s.configPrefix+"-"+serverID.String()+".conf")
 }
 
 func (s *Supervisor) getDesiredServersIDs(ctx context.Context) ([]uuid.UUID, error) {
@@ -75,15 +75,28 @@ func (s *Supervisor) getUnwantedServersIDs(desired []uuid.UUID) []uuid.UUID {
 	return unwanted
 }
 
-func (s *Supervisor) getCmd(ctx context.Context, serverID uuid.UUID) (*exec.Cmd, error) {
+func (s *Supervisor) writeServerConfigFile(ctx context.Context, serverID uuid.UUID) error {
+	serverConfigFilename := s.getConfigPath(serverID)
+
 	serverProvider := NewServerProvider(ctx, s.postgres)
+
 	server, err := serverProvider.GetServerConfig(serverID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	serverConfigFilename := path.Join(s.configDir, s.getConfigPath(serverID))
 	if err := server.WriteServerConfigFile(serverConfigFilename); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Supervisor) getCmd(ctx context.Context, serverID uuid.UUID) (*exec.Cmd, error) {
+	serverConfigFilename := s.getConfigPath(serverID)
+
+	err := s.writeServerConfigFile(ctx, serverID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -134,6 +147,28 @@ func (s *Supervisor) unscheduleReload(ctx context.Context, serverID uuid.UUID) e
 	return state.unscheduleReload(ctx, s.nodeName)
 }
 
+func (s *Supervisor) solveReload(ctx context.Context, cmd exec.Cmd, serverID uuid.UUID) {
+	reloadScheduled, err := s.checkReloadScheduled(ctx, serverID)
+	if err != nil {
+		log.Printf("error checking reload scheduled for server %s: %s", serverID, err.Error())
+	}
+
+	if reloadScheduled {
+		err := s.writeServerConfigFile(ctx, serverID)
+		if err != nil {
+			log.Printf("error writing config file for server %s: %s", serverID, err.Error())
+		}
+
+		if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
+			log.Printf("error sending reload scheduled for server %s: %s", serverID, err.Error())
+		}
+	}
+
+	if err := s.unscheduleReload(ctx, serverID); err != nil {
+		log.Printf("error unscheduling reload for server %s: %s", serverID, err.Error())
+	}
+}
+
 func (s *Supervisor) reconcile(ctx context.Context, unwanted []uuid.UUID, desired []uuid.UUID) {
 	newList := make(map[uuid.UUID]*exec.Cmd, len(desired))
 
@@ -147,7 +182,7 @@ func (s *Supervisor) reconcile(ctx context.Context, unwanted []uuid.UUID, desire
 			_ = cmd.Process.Signal(os.Kill)
 		}
 
-		_ = os.RemoveAll(path.Join(s.configDir, s.getConfigPath(serverID)))
+		_ = os.RemoveAll(s.getConfigPath(serverID))
 	}
 
 	for _, serverID := range desired {
@@ -158,20 +193,7 @@ func (s *Supervisor) reconcile(ctx context.Context, unwanted []uuid.UUID, desire
 					log.Printf("error sending heartbeat for server %s: %s", serverID, err.Error())
 				}
 
-				reloadScheduled, err := s.checkReloadScheduled(ctx, serverID)
-				if err != nil {
-					log.Printf("error checking reload scheduled for server %s: %s", serverID, err.Error())
-				}
-
-				if reloadScheduled {
-					if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
-						log.Printf("error sending reload scheduled for server %s: %s", serverID, err.Error())
-					}
-				}
-
-				if err := s.unscheduleReload(ctx, serverID); err != nil {
-					log.Printf("error unscheduling reload for server %s: %s", serverID, err.Error())
-				}
+				s.solveReload(ctx, *cmd, serverID)
 
 				newList[serverID] = cmd
 				continue

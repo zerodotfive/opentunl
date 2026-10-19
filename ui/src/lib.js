@@ -40,8 +40,16 @@ export const list = async (url, key) => (await json('GET', url))[key] ?? []
 
 // Fetch a file and hand it to the browser as a download
 export async function download(method, url, body, filename) {
+  const response = await api(method, url, body)
+  const disposition = response.headers.get('Content-Disposition')
+
+  const match = disposition?.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)["']?/i)
+  if (match) {
+    filename = decodeURIComponent(match[1].trim())
+  }
+
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(await (await api(method, url, body)).blob())
+  a.href = URL.createObjectURL(await response.blob())
   a.download = filename
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 10000)

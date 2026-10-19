@@ -15,7 +15,7 @@ ARG TARGETARCH
 ARG GITHUB_REF_NAME
 RUN go mod tidy;  \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w -X github.com/zerodotfive/opentunl/internal/version.ApplicationVersion=${GITHUB_REF_NAME}" \
+    go build -ldflags="-s -w -X github.com/zerodotfive/opentunl/internal/info.ApplicationVersion=${GITHUB_REF_NAME}" \
        -o bin/opentunl-server ./cmd/server
 
 FROM scratch AS binary

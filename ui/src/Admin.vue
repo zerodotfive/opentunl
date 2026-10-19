@@ -25,7 +25,7 @@ const go = (e) => (location.hash = e.key)
 </script>
 
 <template>
-  <AppLayout title="opentunl admin">
+  <AppLayout title="opentunl admin" area="admin">
     <a-layout>
       <a-layout-sider theme="light" :width="240" :style="{ borderRight: '1px solid ' + token.colorBorderSecondary }">
         <a-menu :selected-keys="[cur]" style="border: 0" @click="go">

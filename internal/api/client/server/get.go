@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"uuid"
 
 	"github.com/zerodotfive/opentunl/internal/auth"
@@ -11,9 +12,10 @@ import (
 )
 
 type ModelServerGetResponseClientPlain struct {
-	Status      int
-	ContentType string
-	Body        []byte
+	Status             int
+	ContentType        string `header:"Content-Type"`
+	ContentDisposition string `header:"Content-Disposition"`
+	Body               []byte
 }
 
 type ModelServerClientGetRenderedClientRequest struct {
@@ -59,9 +61,13 @@ func (h *Handler) getClientRendered(ctx context.Context, request *ModelServerCli
 		return respGetErrorPlain, nil
 	}
 
+	var invalidFilenameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+	filename := invalidFilenameChars.ReplaceAllString(userInfo.Login+"-"+server.Name+".ovpn", "_")
+
 	return &ModelServerGetResponseClientPlain{
-		Status:      http.StatusOK,
-		ContentType: "text/plain; charset=utf-8",
-		Body:        []byte(configRendered),
+		Status:             http.StatusOK,
+		ContentType:        "application/octet-stream",
+		ContentDisposition: "attachment; filename=\"" + filename + "\"",
+		Body:               []byte(configRendered),
 	}, nil
 }

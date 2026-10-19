@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"uuid"
 
 	"github.com/zerodotfive/opentunl/internal/ovpn"
@@ -19,9 +20,10 @@ type ModelServerGetStateResponse struct {
 }
 
 type ModelServerGetResponsePlain struct {
-	Status      int
-	ContentType string
-	Body        []byte
+	Status             int
+	ContentType        string `header:"Content-Type"`
+	ContentDisposition string `header:"Content-Disposition"`
+	Body               []byte
 }
 
 type ModelServerGetResponseBody struct {
@@ -121,9 +123,13 @@ func (h *Handler) getClientRendered(ctx context.Context, request *ModelServerCli
 		return respGetErrorPlain, errors.New("error getting server configuration")
 	}
 
+	var invalidFilenameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+	filename := invalidFilenameChars.ReplaceAllString(request.Name+"-"+server.Name+".ovpn", "_")
+
 	return &ModelServerGetResponsePlain{
-		Status:      http.StatusOK,
-		ContentType: "text/plain; charset=utf-8",
-		Body:        []byte(configRendered),
+		Status:             http.StatusOK,
+		ContentType:        "application/octet-stream",
+		ContentDisposition: "attachment; filename=\"" + filename + "\"",
+		Body:               []byte(configRendered),
 	}, nil
 }

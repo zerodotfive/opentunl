@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { api, list, act, download } from './lib.js'
+import AppLayout from "./components/AppLayout.vue";
 
 const page = ref()
 const view = ref(null)
@@ -20,7 +21,7 @@ const save = (s, force_new) => act(() => download('POST', url(s), { force_new },
 </script>
 
 <template>
-  <AppLayout>
+  <AppLayout area="client">
     <a-layout-content style="max-width: 1000px; width: 100%; margin: 24px auto">
       <ClientApps />
       <DataPage ref="page" title="Available servers" :columns="columns" :load="load">

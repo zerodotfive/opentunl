@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { json } from '../lib.js'
 import { header } from '../mount.js'
 
-const props = defineProps({ title: { default: 'opentunl' }, anon: Boolean })
+const props = defineProps({ title: { default: 'opentunl' }, anon: Boolean , area: { default: ''}})
 const user = ref('')
 const logout = '/auth/logout?return=' + encodeURIComponent(location.pathname + location.search)
 
@@ -23,7 +23,13 @@ onMounted(async () => {
       <span style="font-size: calc(1em + 4px);">{{ title }}</span>
       <span style="flex: 1" />
       <template v-if="user">
-        <span>{{ user }}</span>
+        <template v-if="area === 'admin' || area === 'forbidden'">
+          <a-button type="primary" href="/" style="color: inherit; width: 100px; margin-right: 8px;">client area</a-button>
+        </template>
+        <template v-if="area === 'client'">
+          <a-button type="primary" href="/admin/" style="color: inherit; width: 100px; margin-right: 8px;" >admin area</a-button>
+        </template>
+        <span style="color: inherit; margin-right: 4px">{{ user }}</span>
         <a :href="logout" style="color: inherit"><LogoutOutlined /></a>
       </template>
     </a-layout-header>
